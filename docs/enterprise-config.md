@@ -1,0 +1,121 @@
+# Enterprise configuration defaults
+
+Git Credential Manager (GCM) can be configured using multiple
+different mechanisms. In order of preference, those mechanisms are:
+
+1. [Environment variables][environment]
+1. Standard [Git configuration][config] files
+   1. Repository/local configuration (`.git/config`)
+   1. User/global configuration (`$HOME/.gitconfig` or `%HOME%\.gitconfig`)
+   1. Installation/system configuration (`etc/gitconfig`)
+1. Enterprise system administrator defaults
+1. Compiled default values
+
+This model largely matches what Git itself supports, namely environment
+variables that take precedence over Git configuration files.
+
+The addition of the enterprise system administrator defaults enables those
+administrators to configure many GCM settings using familiar MDM tooling, rather
+than having to modify the Git installation configuration files.
+
+## User Freedom
+
+We believe the user should _always_ be at liberty to configure
+Git and GCM exactly as they wish. By preferring environment variables and Git
+configuration files over system admin values, these only act as _default values_
+that can always be overridden by the user in the usual ways.
+
+## Windows
+
+Default setting values come from the Windows Registry, specifically the
+following keys:
+
+```text
+HKEY_LOCAL_MACHINE\SOFTWARE\GitCredentialManager\Configuration
+```
+
+By using the Windows Registry, system administrators can use Group Policy to
+easily set defaults for GCM's settings.
+
+The names and possible values of all settings under this key are the same as
+those of the [Git configuration][config] settings.
+
+The type of each registry key can be either `REG_SZ` (string) or `REG_DWORD`
+(integer).
+
+### 32-bit / x86
+
+When running the 32-bit (x86) version of GCM on a 64-bit (x64 or ARM64)
+installation of Windows, the registry access is transparently redirected to
+the `WOW6432Node` node.
+
+```text
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\GitCredentialManager\Configuration
+```
+
+## macOS
+
+Default settings values come from macOS's preferences system. Configuration
+profiles can be deployed to devices using a compatible Mobile Device Management
+(MDM) solution.
+
+Configuration for Git Credential Manager must take the form of a dictionary, set
+for the domain `git-credential-manager` under the key `configuration`. For
+example:
+
+```shell
+defaults write git-credential-manager configuration -dict-add <key> <value>
+```
+
+..where `<key>` is the name of the settings from the [Git configuration][config]
+reference, and `<value>` is the desired value.
+
+All values in the `configuration` dictionary must be strings. For boolean values
+use `true` or `false`, and for integer values use the number in string form.
+
+To read the current configuration:
+
+```console
+$ defaults read git-credential-manager configuration
+{
+    <key1> = <value1>;
+    ...
+    <keyN> = <valueN>;
+}
+```
+
+## Linux
+
+Default settings values come from the `/etc/git-credential-manager/config.d`
+directory. Each file in this directory represents a single settings dictionary.
+
+All files in this directory are read at runtime and merged into a single
+collection of settings, in the order they are read from the file system.
+To provide a stable ordering, it is recommended to prefix each filename with a
+number, e.g. `42-my-settings`.
+
+The format of each file is a simple set of key/value pairs, separated by an
+`=` sign, and each line separated by a line-feed (`\n`, LF) character.
+Comments are identified by a `#` character at the beginning of a line.
+
+For example:
+
+```text
+# /etc/git-credential-manager/config.d/00-example1
+credential.noguiprompt=0
+```
+
+```text
+# /etc/git-credential-manager/config.d/01-example2
+credential.trace=true
+credential.traceMsAuth=true
+```
+
+All settings names and values are the same as the [Git configuration][config]
+reference.
+
+> Note: These files are read once at startup. If changes are made to these files
+they will not be reflected in an already running process.
+
+[environment]: environment.md
+[config]: configuration.md
