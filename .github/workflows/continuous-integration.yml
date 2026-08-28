@@ -1,0 +1,161 @@
+name: ci
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+# ================================
+#              Windows
+# ================================
+  windows:
+    name: Windows
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - runtime: win-x86
+            os: windows-latest
+          - runtime: win-x64
+            os: windows-latest
+          - runtime: win-arm64
+            os: windows-11-arm
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5.4.0
+      with:
+        dotnet-version: 10.0.x
+
+    # The x86 test host requires an x86 .NET runtime, which isn't pre-installed
+    # on the runner, nor can the actions/setup-dotnet action install it.
+    # Install it manually so tests can run.
+    - name: Setup .NET (x86)
+      if: matrix.runtime == 'win-x86'
+      run: |
+        Invoke-WebRequest 'https://dot.net/v1/dotnet-install.ps1' -OutFile dotnet-install.ps1
+        ./dotnet-install.ps1 -Channel 10.0 -Architecture x86 -InstallDir 'C:\Program Files (x86)\dotnet'
+
+    - name: Install dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: |
+        dotnet build src/windows/Installer.Windows/Installer.Windows.csproj `
+         --configuration=Release `
+         --runtime=${{ matrix.runtime }}
+
+    - name: Test
+      run: |
+        dotnet test --verbosity normal `
+        --configuration=WindowsRelease `
+        --runtime=${{ matrix.runtime }}
+
+    - name: Prepare artifacts
+      shell: bash
+      run: |
+        mkdir -p artifacts/bin
+        mv out/windows/Installer.Windows/bin/Release/net472/gcm*.exe artifacts/
+        mv out/windows/Installer.Windows/bin/Release/net472/${{ matrix.runtime }} artifacts/bin/
+        cp out/windows/Installer.Windows/bin/Release/net472/${{ matrix.runtime }}.sym/* artifacts/bin/${{ matrix.runtime }}/
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ matrix.runtime }}
+        path: |
+          artifacts
+
+# ================================
+#              Linux
+# ================================
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        runtime: [ linux-x64, linux-arm64, linux-arm ]
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5.4.0
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Install dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: |
+        dotnet build src/linux/Packaging.Linux/*.csproj \
+         --configuration=Release --no-self-contained \
+         --runtime=${{ matrix.runtime }}
+
+    - name: Test
+      run: |
+        dotnet test --verbosity normal --configuration=LinuxRelease
+
+    - name: Prepare artifacts
+      run: |
+        mkdir -p artifacts
+        mv out/linux/Packaging.Linux/Release/deb/*.deb artifacts/
+        mv out/linux/Packaging.Linux/Release/tar/*.tar.gz artifacts/
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ matrix.runtime }}
+        path: |
+          artifacts
+
+# ================================
+#              macOS
+# ================================
+  osx:
+    name: macOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        runtime: [ osx-x64, osx-arm64 ]
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5.4.0
+      with:
+        dotnet-version: 10.0.x
+
+    - name: Install dependencies
+      run: dotnet restore
+
+    - name: Build
+      run: |
+        dotnet build src/osx/Installer.Mac/*.csproj \
+         --configuration=Release --no-self-contained \
+         --runtime=${{ matrix.runtime }}
+
+    - name: Test
+      run: |
+        dotnet test --verbosity normal --configuration=MacRelease
+
+    - name: Prepare artifacts
+      run: |
+        mkdir -p artifacts/bin
+        mv out/osx/Installer.Mac/pkg/Release/payload "artifacts/bin/${{ matrix.runtime }}"
+        cp out/osx/Installer.Mac/pkg/Release/payload.sym/* "artifacts/bin/${{ matrix.runtime }}/"
+        mv out/osx/Installer.Mac/pkg/Release/gcm*.pkg artifacts/
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ matrix.runtime }}
+        path: |
+          artifacts
